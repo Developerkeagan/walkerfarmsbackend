@@ -3,6 +3,9 @@ const nodemailer = require('nodemailer');
 const sendEmail = async (options) => {
     const port = Number(process.env.SMTP_PORT) || 587;
 
+    // Debug log to verify environment variables are loaded correctly
+    console.log(`[Email Debug] Host: ${process.env.SMTP_HOST}, Port: ${port}, User: ${process.env.SMTP_USER ? 'SET' : 'MISSING'}`);
+
     const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
         port: port,
