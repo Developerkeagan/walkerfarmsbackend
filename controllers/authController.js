@@ -14,8 +14,7 @@ exports.register = async (req, res) => {
         const token = generateToken(user._id);
 
         // Send welcome email upon successful registration
-        try {
-            await sendEmail({
+        sendEmail({
                 email: user.email,
                 subject: 'Welcome to Walker Farms! 🌿',
                 html: `
@@ -35,8 +34,7 @@ exports.register = async (req, res) => {
                         </div>
                     </div>
                 `
-            });
-        } catch (emailError) { console.error("Welcome email could not be sent:", emailError); }
+            }).catch(emailError => console.error("Welcome email could not be sent:", emailError));
 
         res.status(201).json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
     } catch (err) { res.status(500).json({ message: err.message }); }
@@ -52,7 +50,8 @@ exports.login = async (req, res) => {
         const token = generateToken(user._id);
 
         // Send login notification email with IP and location
-        try {
+        (async () => {
+          try {
             let ip = req.ip; // Get the user's IP address
             let location = 'Unknown';
             let displayIp = ip;
@@ -102,7 +101,8 @@ exports.login = async (req, res) => {
                     </div>
                 `
             });
-        } catch (emailError) { console.error("Login notification email could not be sent:", emailError); }
+          } catch (emailError) { console.error("Login notification email could not be sent:", emailError); }
+        })();
 
         res.json({ success: true, token, user: { id: user._id, name: user.name, email: user.email, role: user.role } });
     } catch (err) { res.status(500).json({ message: err.message }); }
