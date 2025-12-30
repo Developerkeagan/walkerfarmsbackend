@@ -112,6 +112,96 @@ exports.getAdminStats = async (req, res) => {
     }
 };
 
+// @desc    Get All Orders (Admin View)
+// @route   GET /api/admin/orders
+// @access  Private/Admin
+exports.getAllOrders = async (req, res) => {
+    try {
+        const { status, limit = 50, skip = 0 } = req.query;
+
+        let filter = {};
+        if (status && status !== 'all') {
+            if (status === 'paid') {
+                filter.isPaid = true;
+            } else if (status === 'unpaid') {
+                filter.isPaid = false;
+            } else if (status === 'delivered') {
+                filter.isDelivered = true;
+            } else if (status === 'pending') {
+                filter.isPaid = false;
+                filter.isDelivered = false;
+            } else if (status === 'shipped') {
+                filter.isPaid = true;
+                filter.isDelivered = false;
+            }
+        }
+
+        const orders = await Order.find(filter)
+            .populate('user', 'name email')
+            .sort({ createdAt: -1 })
+            .limit(parseInt(limit))
+            .skip(parseInt(skip));
+
+        const total = await Order.countDocuments(filter);
+
+        res.json({
+            success: true,
+            orders,
+            total,
+            pagination: {
+                limit: parseInt(limit),
+                skip: parseInt(skip),
+                hasMore: total > parseInt(skip) + parseInt(limit)
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching orders:", error);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// @desc    Update Order Status
+// @route   PATCH /api/admin/orders/:id/status
+// @access  Private/Admin
+exports.updateOrderStatus = async (req, res) => {
+    try {
+        const { status } = req.body;
+
+        const order = await Order.findById(req.params.id);
+        if (!order) {
+            return res.status(404).json({ success: false, message: "Order not found" });
+        }
+
+        if (status === 'paid') {
+            order.isPaid = true;
+            order.paidAt = new Date();
+        } else if (status === 'delivered') {
+            order.isDelivered = true;
+            order.deliveredAt = new Date();
+        } else if (status === 'shipped') {
+            order.isPaid = true;
+            order.paidAt = order.paidAt || new Date();
+        } else if (status === 'processing') {
+            // Processing status - order is being prepared
+            order.isPaid = true;
+            order.paidAt = order.paidAt || new Date();
+        }
+
+        await order.save();
+
+        const updatedOrder = await Order.findById(req.params.id)
+            .populate('user', 'name email');
+
+        res.json({
+            success: true,
+            order: updatedOrder
+        });
+    } catch (error) {
+        console.error("Error updating order status:", error);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
 // @desc    Get All Categories
 // @route   GET /api/admin/categories
 // @access  Private/Admin
@@ -405,7 +495,7 @@ exports.createProduct = async (req, res) => {
             });
             imageUrls = await Promise.all(uploadPromises);
         }
-        
+
         const product = new Product({
             name,
             price,
@@ -418,6 +508,56 @@ exports.createProduct = async (req, res) => {
         res.status(201).json({ success: true, product: createdProduct });
     } catch (error) {
         console.error("Error creating product:", error);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
+// @desc    Update Product
+// @route   PUT /api/admin/products/:id
+// @access  Private/Admin
+exports.updateProduct = async (req, res) => {
+    try {
+        const { name, price, category, stock, description } = req.body;
+        let imageUrls = [];
+
+        const product = await Product.findById(req.params.id);
+        if (!product) {
+            return res.status(404).json({ success: false, message: "Product not found" });
+        }
+
+        // Upload new images to Cloudinary if files exist
+        if (req.files && req.files.length > 0) {
+            const uploadPromises = req.files.map(file => {
+                return new Promise((resolve, reject) => {
+                    const uploadStream = cloudinary.uploader.upload_stream(
+                        { resource_type: 'auto', folder: 'products' },
+                        (error, result) => {
+                            if (error) reject(error);
+                            else resolve(result.secure_url);
+                        }
+                    );
+                    uploadStream.end(file.buffer);
+                });
+            });
+            imageUrls = await Promise.all(uploadPromises);
+        }
+
+        // Update product fields
+        product.name = name || product.name;
+        product.price = price !== undefined ? price : product.price;
+        product.category = category || product.category;
+        product.stock = stock !== undefined ? stock : product.stock;
+        product.description = description !== undefined ? description : product.description;
+
+        // Add new images to existing ones if any
+        if (imageUrls.length > 0) {
+            product.images = [...product.images, ...imageUrls];
+        }
+
+        const updatedProduct = await product.save();
+        res.status(200).json({ success: true, product: updatedProduct });
+    } catch (error) {
+        console.error("Error updating product:", error);
         res.status(500).json({ success: false, message: "Server Error" });
     }
 };

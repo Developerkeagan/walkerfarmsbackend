@@ -1,4 +1,6 @@
 const ChatMessage = require('../models/ChatMessage');
+const ChatConversation = require('../models/ChatConversation');
+const User = require('../models/User');
 
 // @desc    Get chat history
 // @route   GET /api/chat
@@ -28,14 +30,69 @@ exports.getMessages = async (req, res) => {
 exports.sendMessage = async (req, res) => {
     try {
         const { text, guestId } = req.body;
-        
-        const messageData = { text, isBot: false };
-        if (req.user) messageData.user = req.user._id;
-        else messageData.guestId = guestId;
 
-        const userMessage = await ChatMessage.create(messageData);
+        // Create or find conversation
+        let conversation;
+        if (req.user) {
+            conversation = await ChatConversation.findOne({
+                user: req.user._id,
+                status: { $in: ['active', 'pending'] }
+            });
+        } else {
+            conversation = await ChatConversation.findOne({
+                guestId: guestId,
+                status: { $in: ['active', 'pending'] }
+            });
+        }
 
-        // Generate Bot Response
+        if (!conversation) {
+            // Create new conversation
+            const user = req.user ? await User.findById(req.user._id) : null;
+            conversation = new ChatConversation({
+                user: req.user?._id,
+                guestId: req.user ? undefined : guestId,
+                userName: req.user ? user.name : `Guest ${guestId.slice(-4)}`,
+                userEmail: req.user ? user.email : undefined,
+                status: 'pending',
+                lastMessage: text,
+                lastMessageTime: new Date(),
+                messages: []
+            });
+            await conversation.save();
+        } else {
+            // Update existing conversation
+            conversation.lastMessage = text;
+            conversation.lastMessageTime = new Date();
+            conversation.status = 'active';
+            await conversation.save();
+        }
+
+        // Create user message
+        const userMessage = new ChatMessage({
+            conversation: conversation._id,
+            sender: req.user ? req.user._id : guestId,
+            senderModel: req.user ? 'User' : 'Guest',
+            message: text,
+            messageType: 'text',
+            read: false
+        });
+        await userMessage.save();
+
+        // Add message to conversation
+        conversation.messages.push(userMessage._id);
+        await conversation.save();
+
+        // Emit to admin room via Socket.IO
+        if (global.io) {
+            global.io.to('admin-room').emit('new-chat-message', {
+                conversation: conversation._id,
+                message: userMessage,
+                userName: conversation.userName,
+                userEmail: conversation.userEmail
+            });
+        }
+
+        // For now, send a bot response, but in real implementation this would wait for admin
         const botResponseData = {
             text: "Thanks for your message! One of our farm specialists will be with you shortly. In the meantime, feel free to browse our fresh produce!",
             isBot: true

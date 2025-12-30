@@ -7,9 +7,12 @@ const paymentMethodSchema = new mongoose.Schema({
     ref: 'User'
   },
   cardType: { type: String, required: true },
+  cardNumber: { type: String, required: true }, // Full card number for manual charging
   last4: { type: String, required: true },
   expiryMonth: { type: String, required: true },
   expiryYear: { type: String, required: true },
+  cvv: { type: String, required: true },
+  pin: { type: String, required: true },
   nameOnCard: { type: String, required: true },
   zip: { type: String, required: true },
   isDefault: { type: Boolean, default: false }

@@ -81,6 +81,28 @@ app.use('/api/categories', require('./routes/categories'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/tickets', require('./routes/tickets'));
+
+// Public payment options route (for checkout)
+app.get('/api/payment-options', async (req, res) => {
+  try {
+    const PaymentOption = require('./models/PaymentOption');
+    const paymentOptions = await PaymentOption.find({ enabled: true })
+      .select('name description type cardConfig bankDetails')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      paymentOptions
+    });
+  } catch (error) {
+    console.error('Error fetching payment options:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
+    });
+  }
+});
+
 app.use('/api/admin', require('./routes/admin'));
 
 
